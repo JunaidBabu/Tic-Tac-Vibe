@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Endless Multiplayer Tic Tac Toe</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* Basic styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none; /* Prevent pull-to-refresh */
+        }
+        /* Cell styles */
+        .cell {
+            width: 100px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: bold;
+            cursor: pointer;
+            border: 2px solid #9ca3af; /* gray-400 */
+            transition: background-color 0.2s ease-in-out, color 0.3s ease-out, opacity 0.3s ease-out;
+            user-select: none;
+            border-radius: 0.375rem; /* rounded-md */
+            position: relative;
+        }
+        .cell:hover:not(.disabled) {
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        /* Grid lines */
+        .cell:nth-child(3n) { border-right: 2px solid #9ca3af; }
+        .cell:nth-child(3n-1) { border-right: 2px solid #9ca3af; }
+        .cell:nth-child(n+7) { border-bottom: 2px solid #9ca3af; }
+        .cell:nth-child(-n+3) { border-top: 2px solid #9ca3af; }
+        /* Rounded corners for grid */
+        .cell:nth-child(1) { border-top-left-radius: 0.5rem; }
+        .cell:nth-child(3) { border-top-right-radius: 0.5rem; }
+        .cell:nth-child(7) { border-bottom-left-radius: 0.5rem; }
+        .cell:nth-child(9) { border-bottom-right-radius: 0.5rem; }
+
+        /* Player symbols */
+        .cell.x { color: #3b82f6; } /* blue-500 */
+        .cell.o { color: #ef4444; } /* red-500 */
+
+        /* Disabled cell appearance */
+        .cell.disabled {
+             cursor: not-allowed;
+             background-color: #f8f9fa;
+             opacity: 0.6;
+        }
+        /* Overall board disabled state */
+        #board.disabled .cell {
+            cursor: not-allowed;
+            pointer-events: none; /* Prevent clicks reliably */
+        }
+         #board.disabled {
+             opacity: 0.7;
+         }
+
+        /* Utility */
+        .hidden { display: none; }
+
+        /* Modal styles */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5); display: flex;
+            align-items: center; justify-content: center; z-index: 50;
+        }
+        .modal-content {
+            background-color: white; padding: 2rem; border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            max-width: 90%; width: 400px; text-align: center; position: relative;
+        }
+        .modal-close {
+            position: absolute; top: 0.5rem; right: 0.5rem; background: none;
+            border: none; font-size: 1.5rem; cursor: pointer; color: #6b7280;
+        }
+         .modal-close:hover { color: #1f2937; }
+
+         /* Button styles */
+         button {
+             padding: 0.75rem 1.5rem; border-radius: 0.375rem; font-weight: 600;
+             transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease;
+             cursor: pointer;
+             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+         }
+         button:disabled { opacity: 0.5; cursor: not-allowed; }
+         .btn-primary { background-color: #3b82f6; color: white; }
+         .btn-primary:hover:not(:disabled) { background-color: #2563eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+         .btn-secondary { background-color: #6b7280; color: white; }
+         .btn-secondary:hover:not(:disabled) { background-color: #4b5563; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+         .btn-danger { background-color: #ef4444; color: white; }
+         .btn-danger:hover:not(:disabled) { background-color: #dc2626; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+
+         /* Loading spinner */
+        .loader {
+            border: 4px solid #f3f4f6; border-top: 4px solid #3b82f6;
+            border-radius: 50%; width: 24px; height: 24px;
+            animation: spin 1s linear infinite; margin: 0 auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white p-6 md:p-8 rounded-lg shadow-xl w-full max-w-md text-center">
+        <h1 class="text-3xl font-bold mb-1 text-gray-800">Endless Tic Tac Toe</h1>
+        <p class="text-sm text-gray-500 mb-4">Pieces disappear after 5 moves!</p>
+
+        <div id="game-setup" class="space-y-4">
+            <p class="text-gray-600">Create a new game or join using a Game ID or link.</p>
+             <div id="loading-indicator" class="hidden my-4">
+                 <div class="loader"></div>
+                 <p class="text-sm text-gray-500 mt-2">Processing...</p>
+             </div>
+             <div>
+                <button id="create-game-btn" class="btn-primary w-full mb-2">Create New Game</button>
+            </div>
+            <div class="flex items-center space-x-2">
+                 <input type="text" id="game-id-input" placeholder="Enter Game ID to Join" class="flex-grow p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase" maxlength="6">
+                 <button id="join-game-btn" class="btn-secondary">Join</button>
+            </div>
+             <p id="setup-error" class="text-red-500 text-sm mt-2 hidden"></p>
+             <p id="url-info" class="text-sm text-gray-500 mt-2 hidden">Joining game from URL...</p>
+        </div>
+
+        <div id="game-play" class="hidden mt-6">
+            <div class="mb-4 p-3 bg-blue-100 border border-blue-300 rounded-md">
+                 <p class="text-sm text-blue-700">Game Link (Share this!):</p>
+                 <input type="text" id="game-link-display" readonly class="w-full p-1 bg-transparent border-none text-blue-800 font-mono select-all text-center focus:outline-none">
+                 <p class="text-sm text-blue-700">Game ID: <strong id="display-game-id" class="select-all font-mono"></strong></p>
+            </div>
+
+            <p id="player-info" class="text-lg font-semibold mb-2 text-gray-700"></p>
+            <p id="status" class="text-lg font-medium mb-4 text-gray-600">Waiting for opponent...</p>
+            <p id="move-counter" class="text-sm text-gray-500 mb-2">Move: 0</p>
+
+            <div id="board" class="grid grid-cols-3 gap-1 mx-auto w-[306px] h-[306px] bg-gray-300 rounded-lg p-px mb-4">
+                </div>
+
+            <button id="reset-game-btn" class="btn-danger hidden">Play Again</button>
+             <button id="leave-game-btn" class="btn-secondary ml-2">Leave Game</button>
+        </div>
+    </div>
+
+    <div id="message-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+             <button id="modal-close-btn" class="modal-close">&times;</button>
+            <p id="modal-message" class="text-lg mb-4"></p>
+            <button id="modal-ok-btn" class="btn-primary">OK</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import Firebase SDK functions
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, off, update, get, serverTimestamp, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+
+        // --- Firebase Configuration ---
+        // WARNING: Storing keys client-side is insecure for production. Use Auth & Rules.
+        const firebaseConfig = {
+            apiKey: "AIzaSyDKRy1r7iNhY-t4zSPrYY5uqlPV_12dQzY",
+            authDomain: "psych-75653.firebaseapp.com",
+            databaseURL: "https://psych-75653-default-rtdb.firebaseio.com",
+            projectId: "psych-75653",
+            storageBucket: "psych-75653.firebasestorage.app",
+            messagingSenderId: "49106817303",
+            appId: "1:49106817303:web:c4bbe7f0faa6a246e6a752"
+        };
+
+        // --- Initialize Firebase ---
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        // --- DOM Elements ---
+        const gameSetupDiv = document.getElementById('game-setup');
+        const gamePlayDiv = document.getElementById('game-play');
+        const createGameBtn = document.getElementById('create-game-btn');
+        const joinGameBtn = document.getElementById('join-game-btn');
+        const gameIdInput = document.getElementById('game-id-input');
+        const displayGameId = document.getElementById('display-game-id');
+        const playerInfo = document.getElementById('player-info');
+        const statusDisplay = document.getElementById('status');
+        const boardDiv = document.getElementById('board');
+        const resetGameBtn = document.getElementById('reset-game-btn');
+        const leaveGameBtn = document.getElementById('leave-game-btn');
+        const setupError = document.getElementById('setup-error');
+        const messageModal = document.getElementById('message-modal');
+        const modalMessage = document.getElementById('modal-message');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const modalOkBtn = document.getElementById('modal-ok-btn');
+        const gameLinkDisplay = document.getElementById('game-link-display');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const urlInfo = document.getElementById('url-info');
+        const moveCounterDisplay = document.getElementById('move-counter');
+
+        // --- Game State Variables ---
+        let currentGameId = null;             // ID of the current game
+        let currentPlayerSymbol = null;       // 'X' or 'O' for this client
+        let playerNumber = null;              // 1 (X) or 2 (O)
+        let gameRef = null;                   // Firebase reference to the current game node
+        let gameListener = null;              // Firebase onValue listener handle
+        let localBoardState = Array(9).fill(null); // Local cache of the board state {symbol, moveNumber} or null
+        let localMoveCount = 0;               // Local cache of the move count
+        let isGameOver = false;               // Flag if the game has ended
+        let myTurn = false;                   // Flag if it's this client's turn
+        let lastKnownGameData = null;         // Stores the last valid game state received from Firebase
+        const sessionId = Math.random().toString(36).substring(2, 11); // Simple session identifier
+
+        // --- Constants ---
+        const GAME_ID_LENGTH = 6;
+        const GAME_ID_CHARS = 'ABCDEFGHIJKLMNPQRSTUVWXYZ123456789'; // Chars for Game ID
+        const MOVES_BEFORE_DISAPPEAR = 5; // How many moves until a piece vanishes
+
+        // --- Utility Functions ---
+
+        /** Shows or hides the loading indicator and disables/enables setup buttons. */
+        function showLoading(isLoading) {
+            loadingIndicator.classList.toggle('hidden', !isLoading);
+            createGameBtn.disabled = isLoading;
+            joinGameBtn.disabled = isLoading;
+            gameIdInput.disabled = isLoading;
+        }
+
+        /** Displays a message in the modal popup. */
+        function showMessage(message) {
+            modalMessage.textContent = message;
+            messageModal.classList.remove('hidden');
+        }
+
+        /** Hides the modal popup. */
+        function hideModal() {
+            messageModal.classList.add('hidden');
+        }
+
+        /** Displays an error message in the setup section for a short duration. */
+        function showSetupError(message) {
+            setupError.textContent = message;
+            setupError.classList.remove('hidden');
+            setTimeout(() => setupError.classList.add('hidden'), 4000); // Hide after 4s
+        }
+
+        /** Generates a random Game ID based on constants. */
+        function generateGameId() {
+            let result = '';
+            for (let i = 0; i < GAME_ID_LENGTH; i++) {
+                result += GAME_ID_CHARS.charAt(Math.floor(Math.random() * GAME_ID_CHARS.length));
+            }
+            return result;
+        }
+
+        // --- Game Board Functions ---
+
+        /** Creates the 9 cell elements for the game board and initializes UI state. */
+        function createBoard() {
+            console.log("Creating board structure...");
+            boardDiv.innerHTML = ''; // Clear previous board if any
+            for (let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell', 'border-gray-400');
+                cell.dataset.index = i; // Store index for click handling
+                cell.addEventListener('click', handleCellClick);
+                boardDiv.appendChild(cell);
+            }
+            // Ensure visual state matches empty board immediately
+            updateBoard(Array(9).fill(null));
+            // Start board disabled until game state is confirmed by listener
+            setBoardDisabled(true);
+            console.log("Board structure created and initially disabled.");
+        }
+
+        /** Disables or enables the game board visually and functionally. */
+        function setBoardDisabled(isDisabled) {
+             boardDiv.classList.toggle('disabled', isDisabled);
+             // Update individual cell disabled state for visual consistency
+             const cells = boardDiv.querySelectorAll('.cell');
+             cells.forEach(cell => {
+                 // Only toggle empty cells based on global disable state
+                 if (!cell.textContent) {
+                     cell.classList.toggle('disabled', isDisabled);
+                 }
+                 // Ensure filled cells are always visually marked as disabled for clicks
+                 if (cell.textContent) {
+                     cell.classList.add('disabled');
+                 }
+                 // Update cursor based on final state
+                 cell.style.cursor = cell.classList.contains('disabled') ? 'not-allowed' : 'pointer';
+             });
+        }
+
+
+        /** Updates the visual representation of the board based on boardData. */
+        function updateBoard(boardData) {
+            // --- FIX: Create a dense array from potentially sparse Firebase data ---
+            const denseBoard = Array(9).fill(null); // Start with a dense null array
+            if (boardData) { // Check if boardData exists and is array-like or object
+                // Iterate 0-8 and populate denseBoard from boardData if value exists at index
+                for (let i = 0; i < 9; i++) {
+                    // Use hasOwnProperty check for objects, direct access for arrays
+                    if (boardData.hasOwnProperty(i) && boardData[i]) {
+                        denseBoard[i] = boardData[i];
+                    } else if (Array.isArray(boardData) && boardData[i]) {
+                         denseBoard[i] = boardData[i];
+                    }
+                    // Otherwise, denseBoard[i] remains null
+                }
+            }
+            // --- End FIX ---
+
+            localBoardState = denseBoard; // Update local cache with the guaranteed dense array
+
+            const cells = boardDiv.querySelectorAll('.cell');
+            cells.forEach((cell, index) => {
+                // Now use denseBoard which guarantees either an object or null at each index
+                const piece = denseBoard[index];
+                const symbol = piece ? piece.symbol : '';
+
+                // Always set textContent to ensure UI matches state
+                cell.textContent = symbol;
+
+                // Update CSS classes for X/O styling
+                cell.classList.remove('x', 'o');
+                if (symbol === 'X') cell.classList.add('x');
+                else if (symbol === 'O') cell.classList.add('o');
+
+                // Determine if the cell should be disabled (has symbol, game over, or board globally disabled)
+                const isCellDisabled = !!symbol || isGameOver || boardDiv.classList.contains('disabled');
+                cell.classList.toggle('disabled', isCellDisabled);
+            });
+        }
+
+        // --- Game Logic Functions ---
+
+        /** Handles a click event on a board cell. */
+        function handleCellClick(event) {
+            // Ignore clicks if game is over, not player's turn, or board is globally disabled
+            if (isGameOver || !myTurn || boardDiv.classList.contains('disabled')) {
+                 return;
+            }
+
+            const index = parseInt(event.target.dataset.index);
+
+            // Ignore clicks on already filled cells (based on local state)
+            if (localBoardState[index]) {
+                return;
+            }
+
+            // --- Prevent double clicks/race conditions ---
+            myTurn = false; // Assume turn is over locally
+            setBoardDisabled(true); // Disable board immediately
+
+            // --- Calculate updates for Firebase ---
+            const nextMoveNumber = localMoveCount + 1;
+            const updates = {};
+            const gamePath = `/games/${currentGameId}`;
+
+            // 1. Determine which pieces should disappear
+            localBoardState.forEach((piece, i) => {
+                if (piece && (nextMoveNumber - piece.moveNumber >= MOVES_BEFORE_DISAPPEAR)) {
+                    updates[`${gamePath}/board/${i}`] = null; // Mark for removal
+                }
+            });
+
+            // 2. Add the new piece
+            updates[`${gamePath}/board/${index}`] = {
+                symbol: currentPlayerSymbol,
+                moveNumber: nextMoveNumber
+            };
+
+            // 3. Update current player turn
+            updates[`${gamePath}/currentPlayer`] = currentPlayerSymbol === 'X' ? 'O' : 'X';
+
+            // 4. Update total move count
+            updates[`${gamePath}/moveCount`] = nextMoveNumber;
+
+            // --- Send updates to Firebase ---
+            update(ref(database), updates)
+                .then(() => {
+                    // Update successful, listener will handle UI changes
+                    console.log(`Move ${nextMoveNumber} by ${currentPlayerSymbol} sent.`);
+                })
+                .catch(error => {
+                    // --- Error Handling: Revert local state ---
+                    console.error("Error updating move:", error);
+                    showMessage("Error making move. Please try again.");
+                    // Revert local turn state based on the last valid data received
+                    if (lastKnownGameData) {
+                        const shouldBeMyTurn = !lastKnownGameData.isGameOver &&
+                                               lastKnownGameData.currentPlayer === currentPlayerSymbol &&
+                                               lastKnownGameData.status === 'playing';
+                        myTurn = shouldBeMyTurn; // Restore local turn state
+                        setBoardDisabled(!myTurn || lastKnownGameData.isGameOver); // Restore board disabled state
+                        console.log("Reverted turn state after error.");
+                    } else {
+                         // Fallback if no previous state known
+                         setBoardDisabled(true); // Keep board disabled
+                         myTurn = false;
+                         console.log("Could not revert turn state after error.");
+                    }
+                    // --- End Error Handling ---
+                });
+        }
+
+        /** Checks the board state for a winning condition. */
+        function checkWinCondition(board) {
+            const winPatterns = [
+                [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+                [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+                [0, 4, 8], [2, 4, 6]             // Diagonals
+            ];
+            // Ensure board is valid before checking
+            const currentBoard = Array.isArray(board) ? board : Array(9).fill(null);
+
+            for (const pattern of winPatterns) {
+                const [a, b, c] = pattern;
+                // Check symbols at the positions in the pattern
+                const symbolA = currentBoard[a]?.symbol;
+                const symbolB = currentBoard[b]?.symbol;
+                const symbolC = currentBoard[c]?.symbol;
+                // If all positions have the same symbol (and it's not null/empty), return winner
+                if (symbolA && symbolA === symbolB && symbolA === symbolC) {
+                    return symbolA; // 'X' or 'O'
+                }
+            }
+            // No winner found
+            return null;
+        }
+
+        /** Updates the game status display, player info, move count, and board disabled state. */
+        function updateStatus(gameData) {
+             if (!gameData) {
+                 console.error("updateStatus called with null gameData");
+                 resetUI(); return;
+             }
+
+             // Store the received data as the last known valid state
+             lastKnownGameData = { ...gameData, isGameOver: gameData.status === 'gameOver' };
+
+             // Update local cache and UI elements
+             localMoveCount = gameData.moveCount || 0;
+             moveCounterDisplay.textContent = `Move: ${localMoveCount}`;
+             const wasGameOver = isGameOver; // Remember previous game over state
+             isGameOver = gameData.status === 'gameOver';
+             // Determine turn based strictly on Firebase data
+             myTurn = !isGameOver && gameData.currentPlayer === currentPlayerSymbol && gameData.status === 'playing';
+
+             let boardShouldBeDisabled = true; // Board is disabled by default
+             let statusText = ""; // Text for the status display
+
+             // Determine status text and if board should be enabled based on game status
+             switch(gameData.status) {
+                case 'waiting':
+                    statusText = 'Waiting for opponent to join...';
+                    resetGameBtn.classList.add('hidden');
+                    boardShouldBeDisabled = true;
+                    break;
+                case 'playing':
+                    statusText = myTurn ? "Your Turn" : `Opponent's Turn (${gameData.currentPlayer})`;
+                    // Apply turn-specific styling
+                    statusDisplay.classList.toggle('text-green-600', myTurn);
+                    statusDisplay.classList.toggle('text-red-600', !myTurn);
+                    resetGameBtn.classList.add('hidden');
+                    boardShouldBeDisabled = !myTurn; // Enable board ONLY if it's my turn
+                    break;
+                case 'gameOver':
+                    // Determine game over message
+                    if (gameData.winner === 'draw') {
+                        statusText = "It's a Draw!";
+                        statusDisplay.className = 'text-lg font-medium mb-4 text-gray-600';
+                    } else if (gameData.winner) {
+                        statusText = `${gameData.winner === currentPlayerSymbol ? 'You Win!' : 'You Lose!'}`;
+                        statusDisplay.className = `text-lg font-bold mb-4 ${gameData.winner === currentPlayerSymbol ? 'text-green-600' : 'text-red-600'}`;
+                    } else {
+                         statusText = "Game Over"; // Fallback if winner is missing
+                         statusDisplay.className = 'text-lg font-medium mb-4 text-gray-600';
+                    }
+                    resetGameBtn.classList.remove('hidden'); // Show 'Play Again'
+                    boardShouldBeDisabled = true;
+                    break;
+                case 'opponentLeft':
+                     statusText = "Opponent left the game.";
+                     statusDisplay.className = 'text-lg font-medium mb-4 text-yellow-600';
+                     isGameOver = true; // Treat as game over
+                     resetGameBtn.classList.remove('hidden');
+                     boardShouldBeDisabled = true;
+                     break;
+                default:
+                    statusText = "Unknown game status...";
+                    boardShouldBeDisabled = true;
+             }
+
+             // Update the status text display
+             statusDisplay.textContent = statusText;
+
+             // Set the board's disabled state *before* updating cell content
+             setBoardDisabled(boardShouldBeDisabled);
+
+             // Update the visual board cells using the potentially sparse data from Firebase
+             // updateBoard will handle converting it to dense format
+             updateBoard(gameData.board);
+
+             // Check for a win condition if the game is currently playing
+             if (gameData.status === 'playing') {
+                // Use the dense localBoardState for win check after updateBoard runs
+                const winner = checkWinCondition(localBoardState);
+                // If a winner is found AND it was my move that caused it (opponent is now current player)
+                if (winner && gameData.currentPlayer !== currentPlayerSymbol) {
+                     console.log("Win detected on my turn, updating status to gameOver.");
+                     const updates = {
+                         [`/games/${currentGameId}/status`]: 'gameOver',
+                         [`/games/${currentGameId}/winner`]: winner
+                     };
+                     // Send update to Firebase to mark game as over
+                     update(ref(database), updates)
+                        .catch(err => console.error("Error setting game over status:", err));
+                }
+             }
+        }
+
+        // --- Firebase Interaction Functions ---
+
+        /** Handles updates received from the Firebase listener for the current game. */
+        function handleGameUpdate(snapshot) {
+            const gameData = snapshot.val();
+            // If game data is null (e.g., game deleted), reset the UI
+            if (!gameData) {
+                console.log("Game data is null in listener (likely deleted).");
+                 if (currentGameId) { // Only show message if we were in a game
+                    showMessage(`Game ${currentGameId} was not found or has been deleted.`);
+                    resetUI();
+                 }
+                return;
+            }
+            // Process the received game data
+            updateStatus(gameData);
+        }
+
+        /** Starts listening for real-time updates for the specified game ID. */
+        function listenToGame(gameId) {
+            // Stop previous listener if any
+            if (gameListener) {
+                off(gameRef, 'value', gameListener);
+            }
+            // Set up reference and listener
+            gameRef = ref(database, `games/${gameId}`);
+            console.log(`Listening to game: ${gameId}`);
+            gameListener = onValue(gameRef, handleGameUpdate, (error) => {
+                // Handle listener errors (e.g., permission denied after rules change)
+                console.error("Firebase listener error:", error);
+                showMessage("Connection error or permission issue. Please check connection or refresh.");
+                resetUI();
+            });
+
+            // --- Setup onDisconnect handlers ---
+            const playerField = playerNumber === 1 ? 'playerX' : 'playerO';
+            const playerRef = ref(database, `games/${gameId}/${playerField}`);
+            const statusRef = ref(database, `games/${gameId}/status`);
+
+            // 1. Remove this player's entry on disconnect
+            onDisconnect(playerRef).remove();
+
+            // 2. If game is active, set status to 'opponentLeft' on disconnect
+            onValue(statusRef, (statusSnap) => {
+                 const currentStatus = statusSnap.val();
+                 if (currentStatus === 'playing' || currentStatus === 'waiting') {
+                     onDisconnect(statusRef).set('opponentLeft');
+                 } else {
+                     onDisconnect(statusRef).cancel();
+                 }
+             }, { onlyOnce: true });
+        }
+
+        // --- UI State Management Functions ---
+
+        /** Resets the UI to the initial game setup state. */
+        function resetUI() {
+            console.log("Resetting UI to setup state.");
+            // Stop Firebase listener and cancel disconnect handlers
+            if (gameListener && gameRef) {
+                off(gameRef, 'value', gameListener);
+                if (currentGameId) {
+                    const playerField = playerNumber === 1 ? 'playerX' : 'playerO';
+                    if (playerField) {
+                        const playerRef = ref(database, `games/${currentGameId}/${playerField}`);
+                        const statusRef = ref(database, `games/${currentGameId}/status`);
+                        onDisconnect(playerRef).cancel();
+                        onDisconnect(statusRef).cancel();
+                    }
+                }
+                 gameListener = null; gameRef = null;
+            }
+
+            // Reset UI elements visibility
+            gameSetupDiv.classList.remove('hidden');
+            gamePlayDiv.classList.add('hidden');
+            gameIdInput.value = '';
+            setupError.classList.add('hidden');
+            urlInfo.classList.add('hidden');
+            resetGameBtn.classList.add('hidden');
+            boardDiv.innerHTML = ''; // Clear board HTML
+
+            // Reset local game state variables
+            localBoardState = Array(9).fill(null);
+            localMoveCount = 0;
+            moveCounterDisplay.textContent = `Move: 0`;
+            isGameOver = false; myTurn = false;
+            lastKnownGameData = null;
+            currentGameId = null; currentPlayerSymbol = null; playerNumber = null;
+            showLoading(false);
+
+            // Clear the game ID from the URL hash
+            if (window.location.hash) {
+                history.pushState("", document.title, window.location.pathname + window.location.search);
+            }
+            hideModal();
+        }
+
+         /** Attempts to join a game, used by Join button and URL hash loading. */
+        async function attemptJoinGame(gameIdToJoin) {
+            // Validate Game ID format
+            if (!gameIdToJoin || gameIdToJoin.length !== GAME_ID_LENGTH || !/^[A-Z0-9]+$/.test(gameIdToJoin)) {
+                showSetupError(`Invalid Game ID format.`); return;
+            }
+
+            showLoading(true); // Show loading indicator
+            setupError.classList.add('hidden'); // Hide previous errors
+            const targetGameRef = ref(database, `games/${gameIdToJoin}`); // Reference to the target game
+
+            try {
+                // Fetch game data once using get()
+                const snapshot = await get(targetGameRef);
+                const gameData = snapshot.val();
+
+                // Handle case where game ID doesn't exist
+                if (!gameData) {
+                    showSetupError(`Game ID "${gameIdToJoin}" not found.`);
+                    if(window.location.hash === `#${gameIdToJoin}`) resetUI();
+                    return; // Stop joining process
+                }
+
+                // --- Determine player role or handle rejoin/game full scenarios ---
+                if (gameData.playerX === sessionId) {
+                    console.log("Rejoining own game:", gameIdToJoin);
+                    currentGameId = gameIdToJoin; currentPlayerSymbol = 'X'; playerNumber = 1;
+                } else if (gameData.playerO === sessionId) {
+                     console.log("Rejoining as Player O:", gameIdToJoin);
+                     currentGameId = gameIdToJoin; currentPlayerSymbol = 'O'; playerNumber = 2;
+                } else if (gameData.status !== 'waiting') {
+                    showSetupError(`Game "${gameIdToJoin}" is already in progress or finished.`);
+                    if(window.location.hash === `#${gameIdToJoin}`) resetUI();
+                    return;
+                } else {
+                    // Game is waiting, join as Player O
+                    currentGameId = gameIdToJoin; currentPlayerSymbol = 'O'; playerNumber = 2;
+                    const updates = {
+                        [`/games/${currentGameId}/playerO`]: sessionId,
+                        [`/games/${currentGameId}/status`]: 'playing'
+                    };
+                    await update(ref(database), updates);
+                    console.log("Joined game:", currentGameId);
+                }
+
+                // --- Common UI Setup for Joining/Rejoining ---
+                gameSetupDiv.classList.add('hidden');
+                gamePlayDiv.classList.remove('hidden');
+                displayGameId.textContent = currentGameId;
+                if (window.location.hash !== `#${currentGameId}`) {
+                    window.location.hash = currentGameId;
+                }
+                gameLinkDisplay.value = window.location.href;
+                playerInfo.textContent = `You are Player ${currentPlayerSymbol}`;
+                playerInfo.className = `text-lg font-semibold mb-2 ${currentPlayerSymbol === 'X' ? 'text-blue-600' : 'text-red-600'}`;
+                createBoard(); // Create board structure
+                listenToGame(currentGameId); // Start listening
+
+            } catch (error) {
+                console.error("Error joining game:", error);
+                showSetupError(`Failed to join game "${gameIdToJoin}". Check ID/connection.`);
+                if(window.location.hash === `#${gameIdToJoin}`) resetUI();
+            } finally {
+                showLoading(false);
+                urlInfo.classList.add('hidden');
+            }
+        }
+
+        // --- Event Listeners ---
+
+        /** Handles click on the "Create New Game" button. */
+        createGameBtn.addEventListener('click', async () => {
+            if (createGameBtn.disabled) return;
+            showLoading(true);
+            setupError.classList.add('hidden');
+            let newGameId = null; let attempts = 0; const maxAttempts = 10;
+
+            while (!newGameId && attempts < maxAttempts) {
+                attempts++; const potentialId = generateGameId();
+                const potentialGameRef = ref(database, `games/${potentialId}`);
+                try {
+                    const snapshot = await get(potentialGameRef);
+                    if (!snapshot.exists()) { newGameId = potentialId; }
+                    else { console.warn(`ID ${potentialId} exists. Retrying...`); }
+                } catch (error) {
+                     console.error("Error checking ID:", error); showSetupError("Error checking ID."); showLoading(false); return;
+                }
+            }
+
+            if (!newGameId) {
+                 showSetupError("Failed to generate unique ID."); showLoading(false); return;
+            }
+
+            const newGameRef = ref(database, `games/${newGameId}`);
+            const initialGameData = {
+                board: Array(9).fill(null), currentPlayer: 'X', playerX: sessionId, playerO: null,
+                status: 'waiting', winner: null, moveCount: 0, createdAt: serverTimestamp()
+            };
+
+            try {
+                await set(newGameRef, initialGameData);
+                console.log("Game created:", newGameId);
+                currentGameId = newGameId; currentPlayerSymbol = 'X'; playerNumber = 1;
+                gameSetupDiv.classList.add('hidden'); gamePlayDiv.classList.remove('hidden');
+                displayGameId.textContent = newGameId; window.location.hash = newGameId;
+                gameLinkDisplay.value = window.location.href;
+                playerInfo.textContent = `You are Player X`;
+                playerInfo.className = 'text-lg font-semibold mb-2 text-blue-600';
+                createBoard();
+                listenToGame(newGameId);
+            } catch (error) {
+                console.error("Error creating game:", error); showSetupError("Failed to create game.");
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        /** Handles click on the "Join" button. */
+        joinGameBtn.addEventListener('click', () => {
+            const gameIdToJoin = gameIdInput.value.trim().toUpperCase();
+            attemptJoinGame(gameIdToJoin);
+        });
+
+        /** Handles Enter key press in the Game ID input field. */
+        gameIdInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); joinGameBtn.click(); }
+        });
+
+        /** Handles click on the "Play Again" button. */
+        resetGameBtn.addEventListener('click', () => {
+             if (!currentGameId || !gameRef) return;
+             console.log("Resetting game:", currentGameId);
+             resetGameBtn.classList.add('hidden'); statusDisplay.textContent = "Resetting game...";
+             if (currentPlayerSymbol === 'X') {
+                 get(ref(database, `games/${currentGameId}/playerO`)).then((snapO) => {
+                     const playerOExists = snapO.exists() && snapO.val();
+                     const updates = {
+                         [`/games/${currentGameId}/board`]: Array(9).fill(null),
+                         [`/games/${currentGameId}/currentPlayer`]: 'X',
+                         [`/games/${currentGameId}/winner`]: null,
+                         [`/games/${currentGameId}/moveCount`]: 0,
+                         [`/games/${currentGameId}/status`]: playerOExists ? 'playing' : 'waiting'
+                     };
+                     update(ref(database), updates).then(() => console.log("Game reset by X")).catch(error => console.error("Error resetting:", error));
+                 }).catch(error => {
+                     console.error("Error checking playerO:", error);
+                     const updates = { /* Fallback reset */
+                         [`/games/${currentGameId}/board`]: Array(9).fill(null), [`/games/${currentGameId}/currentPlayer`]: 'X',
+                         [`/games/${currentGameId}/winner`]: null, [`/games/${currentGameId}/moveCount`]: 0, [`/games/${currentGameId}/status`]: 'waiting'
+                     };
+                      update(ref(database), updates).then(() => console.log("Game reset by X (fallback)")).catch(err => console.error("Error resetting (fallback):", err));
+                 });
+             } else {
+                 console.log("Player O waiting for reset."); statusDisplay.textContent = "Waiting for Player X to reset...";
+             }
+        });
+
+        /** Handles click on the "Leave Game" button. */
+        leaveGameBtn.addEventListener('click', () => {
+            if (!currentGameId || !gameRef) { resetUI(); return; }
+            console.log("Leaving game:", currentGameId); showLoading(true);
+            const playerField = playerNumber === 1 ? 'playerX' : 'playerO';
+            const gamePath = `/games/${currentGameId}`;
+            get(gameRef).then(snapshot => {
+                const gameData = snapshot.val();
+                if (!gameData) { resetUI(); return; }
+                const updates = {}; updates[`${gamePath}/${playerField}`] = null;
+                if (gameData.status === 'playing') { updates[`${gamePath}/status`] = 'opponentLeft'; }
+                else if (gameData.status === 'waiting' && playerNumber === 1) {
+                    remove(gameRef).then(() => console.log("Game deleted.")).catch(err => console.error("Error deleting:", err)).finally(() => resetUI()); return;
+                }
+                update(ref(database), updates).then(() => console.log("Player removed.")).catch(err => console.error("Error removing:", err)).finally(() => resetUI());
+            }).catch(err => {
+                 console.error("Error fetching game data:", err);
+                 const updatesFallback = {}; updatesFallback[`${gamePath}/${playerField}`] = null;
+                 update(ref(database), updatesFallback).catch(e => console.error("Error removing (fallback):", e)).finally(() => resetUI());
+            });
+        });
+
+        /** Handles clicks on the modal's close button. */
+        modalCloseBtn.addEventListener('click', hideModal);
+        /** Handles clicks on the modal's OK button. */
+        modalOkBtn.addEventListener('click', hideModal);
+
+        // --- Initial Page Load Logic ---
+
+        /** Sets up the initial UI state when the page loads. Checks for Game ID in URL hash. */
+        function initializeGamePage() { // Renamed function
+            console.log("Initializing game page...");
+            // Check URL hash for a potential Game ID to join automatically
+            const hash = window.location.hash.substring(1).toUpperCase(); // Get hash without #
+            if (hash && hash.length === GAME_ID_LENGTH && /^[A-Z0-9]+$/.test(hash)) {
+                // If valid hash found, pre-fill input and attempt to join
+                console.log("Found Game ID in URL hash:", hash);
+                gameIdInput.value = hash;
+                urlInfo.classList.remove('hidden'); // Show "Joining from URL..." message
+                attemptJoinGame(hash);
+            } else {
+                 // No valid hash, ensure the setup screen is visible
+                 console.log("No valid game ID in hash. Showing setup screen.");
+                 gameSetupDiv.classList.remove('hidden');
+                 gamePlayDiv.classList.add('hidden');
+                 // No need to call resetUI() here, just ensure correct visibility
+            }
+        }
+
+        /** Add listener to run initializeGamePage after the HTML is fully loaded. */
+        document.addEventListener('DOMContentLoaded', initializeGamePage);
+
+    </script>
+
+</body>
+</html>
